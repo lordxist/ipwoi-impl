@@ -29,42 +29,38 @@ type Ctx = [Type]
 
 type Subst = Term
 
-mapType :: (Term -> a -> Int -> Term) -> Type -> a -> Int -> Type
+mapType :: (Int -> a -> Int -> Term) -> Type -> a -> Int -> Type
 mapType f (Sigma t' t) s n = Sigma (mapType f t' s n) (mapType f t s (n+1))
 mapType f (Pi t' t) s n = Pi (mapType f t' s n) (mapType f t s (n+1))
-mapType f (El tm) s n = El (f tm s n)
+mapType f (El tm) s n = El (mapTerm f tm s n)
 mapType f (Span t) s n = Span (mapType f t s n)
-mapType f (DSpan t' t a) s n = DSpan (mapType f t' s n) (mapType f t s (n+1)) (f a s n)
+mapType f (DSpan t' t a) s n = DSpan (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f a s n)
 mapType _ t _ _ = t
 
-mapTerm :: (Int -> a -> Int -> Term) -> (Type -> a -> Int -> Type) -> Term -> a -> Int -> Term
-mapTerm f ft (DB m) s n = f m s n
-mapTerm f ft (TwoElim t tm u v) s n = TwoElim (ft t s n) (mapTerm f ft tm s n) (mapTerm f ft u s n) (mapTerm f ft v s n)
-mapTerm f ft (DPair t' t u v) s n = DPair (ft t' s n) (ft t s (n+1)) (mapTerm f ft u s n) (mapTerm f ft v s n)
-mapTerm f ft (Prj1 t' t tm) s n = Prj1 (ft t' s n) (ft t s (n+1)) (mapTerm f ft tm s n)
-mapTerm f ft (Prj2 t' t tm) s n = Prj2 (ft t' s n) (ft t s (n+1)) (mapTerm f ft tm s n)
-mapTerm f ft (Lam t' t tm) s n = Lam (ft t' s n) (ft t s (n+1)) (mapTerm f ft tm s (n+1))
-mapTerm f ft (App t' t fn tm) s n = App (ft t' s n) (ft t s (n+1)) (mapTerm f ft fn s n) (mapTerm f ft tm s n)
-mapTerm f ft (C t) s n = C (ft t s n)
-mapTerm f ft (Ap t t' tm a) s n = Ap (ft t s n) (ft t' s n) (mapTerm f ft tm s (n+1)) (mapTerm f ft a s n)
-mapTerm f ft (Apd t t' tm a) s n = Apd (ft t s n) (ft t' s (n+1)) (mapTerm f ft tm s (n+1)) (mapTerm f ft a s n)
-mapTerm f ft (Unspan t0 t tm) s n = Unspan (ft t0 s n) (ft t s n) (mapTerm f ft tm s (n+1))
-mapTerm f ft (KZero t tm) s n = KZero (ft t s n) (mapTerm f ft tm s n)
-mapTerm f ft (S t tm) s n = S (ft t s n) (mapTerm f ft tm s n)
-mapTerm _ _  tm _ _ = tm
+mapTerm :: (Int -> a -> Int -> Term) -> Term -> a -> Int -> Term
+mapTerm f (DB m) s n = f m s n
+mapTerm f (TwoElim t tm u v) s n = TwoElim (mapType f t s n) (mapTerm f tm s n) (mapTerm f u s n) (mapTerm f v s n)
+mapTerm f (DPair t' t u v) s n = DPair (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f u s n) (mapTerm f v s n)
+mapTerm f (Prj1 t' t tm) s n = Prj1 (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f tm s n)
+mapTerm f (Prj2 t' t tm) s n = Prj2 (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f tm s n)
+mapTerm f (Lam t' t tm) s n = Lam (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f tm s (n+1))
+mapTerm f (App t' t fn tm) s n = App (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f fn s n) (mapTerm f tm s n)
+mapTerm f (C t) s n = C (mapType f t s n)
+mapTerm f (Ap t t' tm a) s n = Ap (mapType f t s n) (mapType f t' s n) (mapTerm f tm s (n+1)) (mapTerm f a s n)
+mapTerm f (Apd t t' tm a) s n = Apd (mapType f t s n) (mapType f t' s (n+1)) (mapTerm f tm s (n+1)) (mapTerm f a s n)
+mapTerm f (Unspan t0 t tm) s n = Unspan (mapType f t0 s n) (mapType f t s n) (mapTerm f tm s (n+1))
+mapTerm f (KZero t tm) s n = KZero (mapType f t s n) (mapTerm f tm s n)
+mapTerm f (S t tm) s n = S (mapType f t s n) (mapTerm f tm s n)
+mapTerm _ tm _ _ = tm
 
-substAux :: Type -> Subst -> Int -> Type
-substAux = mapType substAuxTm
-
-substAuxTm :: Term -> Subst -> Int -> Term
-substAuxTm =
-  mapTerm (\m s n -> if m == n then (moveIndicesTm s n 0) else (if m > n then (DB (m-1)) else (DB m))) substAux
+substAuxFct :: Int -> Subst -> Int -> Term
+substAuxFct m s n = if m == n then (moveIndicesTm s n 0) else (if m > n then (DB (m-1)) else (DB m))
 
 subst :: Type -> Subst -> Type
-subst t s = substAux t s 0
+subst t s = mapType substAuxFct t s 0
 
 substTm :: Term -> Subst -> Term
-substTm tm s = substAuxTm tm s 0
+substTm tm s = mapTerm substAuxFct tm s 0
 
 containsDB0Tm :: Term -> Int -> Bool
 containsDB0Tm (DB m) n = m == n
@@ -167,11 +163,14 @@ reduce (DSpan t' t a)
   | otherwise = reduce (Span (reduce t))
 reduce t = t
 
+moveIndicesFct :: Int -> Int -> Int -> Term
+moveIndicesFct m n l = DB (if m >= l then (m+n) else m)
+
 moveIndices :: Type -> Int -> Int -> Type
-moveIndices = mapType moveIndicesTm
+moveIndices = mapType moveIndicesFct
 
 moveIndicesTm :: Term -> Int -> Int -> Term
-moveIndicesTm = mapTerm (\m n l -> DB (if m >= l then (m+n) else m)) moveIndices
+moveIndicesTm = mapTerm moveIndicesFct
 
 typecheck :: Ctx -> Type -> Bool
 typecheck ctx (Sigma t' t) = (typecheck ctx t') && (typecheck (t':ctx) t)
