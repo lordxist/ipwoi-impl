@@ -7,7 +7,7 @@ Work in progress. Currently able to typecheck the term the second projection of 
 Usage:
 ```
 $ ghc Main.hs
-$ ./Main.hs -s
+$ ./Main -s
 Term: StarTm
 Type: One
 _________________________________

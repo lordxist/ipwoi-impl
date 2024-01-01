@@ -29,13 +29,16 @@ type Ctx = [Type]
 
 type Subst = Term
 
+mapType :: (Term -> a -> Int -> Term) -> Type -> a -> Int -> Type
+mapType f (Sigma t' t) s n = Sigma (mapType f t' s n) (mapType f t s (n+1))
+mapType f (Pi t' t) s n = Pi (mapType f t' s n) (mapType f t s (n+1))
+mapType f (El tm) s n = El (f tm s n)
+mapType f (Span t) s n = Span (mapType f t s n)
+mapType f (DSpan t' t a) s n = DSpan (mapType f t' s n) (mapType f t s (n+1)) (f a s n)
+mapType _ t _ _ = t
+
 substAux :: Type -> Subst -> Int -> Type
-substAux (Sigma t' t) s n = Sigma (substAux t' s n) (substAux t s (n+1))
-substAux (Pi t' t) s n = Pi (substAux t' s n) (substAux t s (n+1))
-substAux (El tm) s n = El (substAuxTm tm s n)
-substAux (Span t) s n = Span (substAux t s n)
-substAux (DSpan t' t a) s n = DSpan (substAux t' s n) (substAux t s (n+1)) (substAuxTm a s n)
-substAux t _ _ = t
+substAux = mapType substAuxTm
 
 substAuxTm :: Term -> Subst -> Int -> Term
 substAuxTm (DB m) s n = if m == n then (moveIndicesTm s n 0) else (if m > n then (DB (m-1)) else (DB m))
@@ -161,12 +164,7 @@ reduce (DSpan t' t a)
 reduce t = t
 
 moveIndices :: Type -> Int -> Int -> Type
-moveIndices (Sigma t' t) n l = Sigma (moveIndices t' n l) (moveIndices t n (l+1))
-moveIndices (Pi t' t) n l = Pi (moveIndices t' n l) (moveIndices t n (l+1))
-moveIndices (El tm) n l = El (moveIndicesTm tm n l)
-moveIndices (Span t) n l = Span (moveIndices t n l)
-moveIndices (DSpan t' t a) n l = DSpan (moveIndices t' n l) (moveIndices t n (l+1)) (moveIndicesTm a n l)
-moveIndices t _ _ = t
+moveIndices = mapType moveIndicesTm
 
 moveIndicesTm :: Term -> Int -> Int -> Term
 moveIndicesTm (DB m) n l = DB (if m >= l then (m+n) else m)
