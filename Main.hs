@@ -37,24 +37,28 @@ mapType f (Span t) s n = Span (mapType f t s n)
 mapType f (DSpan t' t a) s n = DSpan (mapType f t' s n) (mapType f t s (n+1)) (f a s n)
 mapType _ t _ _ = t
 
+mapTerm :: (Int -> a -> Int -> Term) -> (Type -> a -> Int -> Type) -> Term -> a -> Int -> Term
+mapTerm f ft (DB m) s n = f m s n
+mapTerm f ft (TwoElim t tm u v) s n = TwoElim (ft t s n) (mapTerm f ft tm s n) (mapTerm f ft u s n) (mapTerm f ft v s n)
+mapTerm f ft (DPair t' t u v) s n = DPair (ft t' s n) (ft t s (n+1)) (mapTerm f ft u s n) (mapTerm f ft v s n)
+mapTerm f ft (Prj1 t' t tm) s n = Prj1 (ft t' s n) (ft t s (n+1)) (mapTerm f ft tm s n)
+mapTerm f ft (Prj2 t' t tm) s n = Prj2 (ft t' s n) (ft t s (n+1)) (mapTerm f ft tm s n)
+mapTerm f ft (Lam t' t tm) s n = Lam (ft t' s n) (ft t s (n+1)) (mapTerm f ft tm s (n+1))
+mapTerm f ft (App t' t fn tm) s n = App (ft t' s n) (ft t s (n+1)) (mapTerm f ft fn s n) (mapTerm f ft tm s n)
+mapTerm f ft (C t) s n = C (ft t s n)
+mapTerm f ft (Ap t t' tm a) s n = Ap (ft t s n) (ft t' s n) (mapTerm f ft tm s (n+1)) (mapTerm f ft a s n)
+mapTerm f ft (Apd t t' tm a) s n = Apd (ft t s n) (ft t' s (n+1)) (mapTerm f ft tm s (n+1)) (mapTerm f ft a s n)
+mapTerm f ft (Unspan t0 t tm) s n = Unspan (ft t0 s n) (ft t s n) (mapTerm f ft tm s (n+1))
+mapTerm f ft (KZero t tm) s n = KZero (ft t s n) (mapTerm f ft tm s n)
+mapTerm f ft (S t tm) s n = S (ft t s n) (mapTerm f ft tm s n)
+mapTerm _ _  tm _ _ = tm
+
 substAux :: Type -> Subst -> Int -> Type
 substAux = mapType substAuxTm
 
 substAuxTm :: Term -> Subst -> Int -> Term
-substAuxTm (DB m) s n = if m == n then (moveIndicesTm s n 0) else (if m > n then (DB (m-1)) else (DB m))
-substAuxTm (TwoElim t tm u v) s n = TwoElim (substAux t s n) (substAuxTm tm s n) (substAuxTm u s n) (substAuxTm v s n)
-substAuxTm (DPair t' t u v) s n = DPair (substAux t' s n) (substAux t s (n+1)) (substAuxTm u s n) (substAuxTm v s n)
-substAuxTm (Prj1 t' t tm) s n = Prj1 (substAux t' s n) (substAux t s (n+1)) (substAuxTm tm s n)
-substAuxTm (Prj2 t' t tm) s n = Prj2 (substAux t' s n) (substAux t s (n+1)) (substAuxTm tm s n)
-substAuxTm (Lam t' t tm) s n = Lam (substAux t' s n) (substAux t s (n+1)) (substAuxTm tm s (n+1))
-substAuxTm (App t' t f tm) s n = App (substAux t' s n) (substAux t s (n+1)) (substAuxTm f s n) (substAuxTm tm s n)
-substAuxTm (C t) s n = C (substAux t s n)
-substAuxTm (Ap t t' tm a) s n = Ap (substAux t s n) (substAux t' s n) (substAuxTm tm s (n+1)) (substAuxTm a s n)
-substAuxTm (Apd t t' tm a) s n = Apd (substAux t s n) (substAux t' s (n+1)) (substAuxTm tm s (n+1)) (substAuxTm a s n)
-substAuxTm (Unspan t0 t tm) s n = Unspan (substAux t0 s n) (substAux t s n) (substAuxTm tm s (n+1))
-substAuxTm (KZero t tm) s n = KZero (substAux t s n) (substAuxTm tm s n)
-substAuxTm (S t tm) s n = S (substAux t s n) (substAuxTm tm s n)
-substAuxTm tm _ _ = tm
+substAuxTm =
+  mapTerm (\m s n -> if m == n then (moveIndicesTm s n 0) else (if m > n then (DB (m-1)) else (DB m))) substAux
 
 subst :: Type -> Subst -> Type
 subst t s = substAux t s 0
@@ -167,20 +171,7 @@ moveIndices :: Type -> Int -> Int -> Type
 moveIndices = mapType moveIndicesTm
 
 moveIndicesTm :: Term -> Int -> Int -> Term
-moveIndicesTm (DB m) n l = DB (if m >= l then (m+n) else m)
-moveIndicesTm (TwoElim t tm u v) n l = TwoElim (moveIndices t n l) (moveIndicesTm tm n l) (moveIndicesTm u n l) (moveIndicesTm v n l)
-moveIndicesTm (DPair t' t u v) n l = DPair (moveIndices t' n l) (moveIndices t n (l+1)) (moveIndicesTm u n l) (moveIndicesTm v n l)
-moveIndicesTm (Prj1 t' t tm) n l = Prj1 (moveIndices t' n l) (moveIndices t n (l+1)) (moveIndicesTm tm n l)
-moveIndicesTm (Prj2 t' t tm) n l = Prj2 (moveIndices t' n l) (moveIndices t n (l+1)) (moveIndicesTm tm n l)
-moveIndicesTm (Lam t' t tm) n l = Lam (moveIndices t' n l) (moveIndices t n (l+1)) (moveIndicesTm tm n (l+1))
-moveIndicesTm (App t' t f tm) n l = App (moveIndices t' n l) (moveIndices t n (l+1)) (moveIndicesTm f n l) (moveIndicesTm tm n l)
-moveIndicesTm (C t) n l = C (moveIndices t n l)
-moveIndicesTm (Ap t t' tm a) n l = Ap (moveIndices t n l) (moveIndices t' n l) (moveIndicesTm tm n (l+1)) (moveIndicesTm a n l)
-moveIndicesTm (Apd t t' tm a) n l = Apd (moveIndices t n l) (moveIndices t' n (l+1)) (moveIndicesTm tm n (l+1)) (moveIndicesTm a n l)
-moveIndicesTm (Unspan t0 t tm) n l = Unspan (moveIndices t0 n l) (moveIndices t n l) (moveIndicesTm tm n (l+1))
-moveIndicesTm (KZero t tm) n l = KZero (moveIndices t n l) (moveIndicesTm tm n l)
-moveIndicesTm (S t tm) n l = S (moveIndices t n l) (moveIndicesTm tm n l)
-moveIndicesTm tm _ _ = tm
+moveIndicesTm = mapTerm (\m n l -> DB (if m >= l then (m+n) else m)) moveIndices
 
 typecheck :: Ctx -> Type -> Bool
 typecheck ctx (Sigma t' t) = (typecheck ctx t') && (typecheck (t':ctx) t)
