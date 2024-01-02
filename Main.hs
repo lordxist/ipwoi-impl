@@ -143,6 +143,10 @@ reduceTm (C t) = case reduce t of El tm -> tm; t' -> C t'
 reduceTm (Ap _ _ (DB 0) a) = reduceTm a
 reduceTm (Ap t _ (DPair t'1 t'2 u v) a) =
   DPair (reduce (Span t'1)) (reduce (DSpan t (subst t'2 u) a)) (reduceTm (Ap t t'1 u a)) (reduceTm (Apd t t'2 v a))
+-- not in the paper b/c covered by the DPair eq. above + eta law, but we do not have eta in our red. rules
+reduceTm (Ap t0' _ (Prj1 t' t tm) a) = reduceTm (Prj1 (Span t') (DSpan t' t (DB 0)) (Ap t0' (Sigma t' t) tm a))
+-- not in the paper b/c covered by the DPair eq. above + eta law, but we do not have eta in our red. rules
+reduceTm (Ap t0' _ (Prj2 t' t tm) a) = reduceTm (Prj2 (Span t') (DSpan t' t (DB 0)) (Ap t0' (Sigma t' t) tm a))
 reduceTm (Ap _ _ StarTm _) = StarTm -- not in the paper b/c covered by the eta law, but we do not have these in our red. rules
 reduceTm (Ap _ _ ZeroTm _) = ZeroTm
 reduceTm (Ap _ _ OneTm _) = OneTm
@@ -195,8 +199,14 @@ reduce (DSpan t' t a)
     case t of
       Sigma b c ->
         Sigma (reduce (DSpan t' b a)) (DSpan (Sigma t' b) c (DPair (Span t') (DSpan t' b a) a (DB 0)))
-      El (DB 0) ->
-        case reduceTm a of Unspan t20 t2 tm2 -> t2; tm -> DSpan (reduce t') t tm
+      El tm0 ->
+        case (tm0, reduceTm a) of
+          (DB 0, Unspan t20 t2 tm2) -> t2
+          -- ----
+          -- attempt to get closer to normalization (instance of the inverse dir. of the eq. implemented below)
+          (DB 0, tm) -> DSpan (reduce t') t tm
+          (_, tm) -> reduce (DSpan U (El (DB 0)) (Ap t' U tm0 tm))
+          -- ----
       _ ->
         case reduceTm a of Ap t2 t2' tm a' -> DSpan t2 (subst t tm) a'; tm -> DSpan (reduce t') t tm
   | otherwise = reduce (Span (reduce t))
@@ -326,20 +336,12 @@ idFctParametricityTm =
     _ -> undefined
 
 -- idFctParametricity without Prj2 around it
--- TODO adapt type checking such that this can be typed to (Sigma A P)
--- (find out how to realize this with reduction rules:
---  maybe reverse direction of DSpan/Apd composition rule,
---  but how constructively? -- would need to invent a substitution)
 idFctParametricityPart1 :: Type
 idFctParametricityPart1 =
   Pi (Pi (Sigma U (El (DB 0))) (El (Prj1 U (El (DB 0)) (DB 0))))
     (Pi Two
       (Pi (Dummy Two (DB 0))
-        (DSpan (Sigma U (El (DB 0))) (El (Prj1 U (El (DB 0)) (DB 0)))
-          (DPair (Span U) (DSpan U (El (DB 0)) (DB 0))
-            (Unspan Two (Sigma Two (Dummy Two (DB 0)))
-              (Prj1 Two (Dummy Two (DB 0)) (DB 0)))
-            (DPair Two (Dummy Two (DB 0)) (DB 1) (DB 0))))
+        (Sigma Two (Dummy Two (DB 0)))
       ))
 
 idFctParametricityPart1Tm :: Term
