@@ -29,62 +29,101 @@ type Ctx = [Type]
 
 type Subst = Term
 
-mapType :: (Int -> a -> Int -> Term) -> Type -> a -> Int -> Type
-mapType f (Sigma t' t) s n = Sigma (mapType f t' s n) (mapType f t s (n+1))
-mapType f (Pi t' t) s n = Pi (mapType f t' s n) (mapType f t s (n+1))
-mapType f (El tm) s n = El (mapTerm f tm s n)
-mapType f (Span t) s n = Span (mapType f t s n)
-mapType f (DSpan t' t a) s n = DSpan (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f a s n)
-mapType _ t _ _ = t
+data TypeFold a b = TypeFold {
+-- terms
+  db :: Int -> b
+, starTm :: b
+, zeroTm :: b
+, oneTm :: b
+, twoElim :: a -> b -> b -> b -> b
+, dPair :: a -> a -> b -> b -> b
+, prj1 :: a -> a -> b -> b
+, prj2 :: a -> a -> b -> b
+, lam :: a -> a -> b -> b
+, app :: a -> a -> b -> b -> b
+, c :: a -> b
+, ap :: a -> a -> b -> b -> b
+, apd :: a -> a -> b -> b -> b
+, unspan :: a -> a -> b -> b
+, kZero :: a -> b -> b
+, s :: a -> b -> b
+, dummyTm :: b
+-- types
+, one :: a
+, two :: a
+, sigma :: a -> a -> a
+, pi :: a -> a -> a
+, u :: a
+, el :: b -> a
+, span :: a -> a
+, dSpan :: a -> a -> b -> a
+, dummy :: a -> b -> a
+}
 
-mapTerm :: (Int -> a -> Int -> Term) -> Term -> a -> Int -> Term
-mapTerm f (DB m) s n = f m s n
-mapTerm f (TwoElim t tm u v) s n = TwoElim (mapType f t s n) (mapTerm f tm s n) (mapTerm f u s n) (mapTerm f v s n)
-mapTerm f (DPair t' t u v) s n = DPair (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f u s n) (mapTerm f v s n)
-mapTerm f (Prj1 t' t tm) s n = Prj1 (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f tm s n)
-mapTerm f (Prj2 t' t tm) s n = Prj2 (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f tm s n)
-mapTerm f (Lam t' t tm) s n = Lam (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f tm s (n+1))
-mapTerm f (App t' t fn tm) s n = App (mapType f t' s n) (mapType f t s (n+1)) (mapTerm f fn s n) (mapTerm f tm s n)
-mapTerm f (C t) s n = C (mapType f t s n)
-mapTerm f (Ap t t' tm a) s n = Ap (mapType f t s n) (mapType f t' s n) (mapTerm f tm s (n+1)) (mapTerm f a s n)
-mapTerm f (Apd t t' tm a) s n = Apd (mapType f t s n) (mapType f t' s (n+1)) (mapTerm f tm s (n+1)) (mapTerm f a s n)
-mapTerm f (Unspan t0 t tm) s n = Unspan (mapType f t0 s n) (mapType f t s n) (mapTerm f tm s (n+1))
-mapTerm f (KZero t tm) s n = KZero (mapType f t s n) (mapTerm f tm s n)
-mapTerm f (S t tm) s n = S (mapType f t s n) (mapTerm f tm s n)
-mapTerm _ tm _ _ = tm
+idTypeFold :: TypeFold Type Term
+idTypeFold = TypeFold
+  DB StarTm ZeroTm OneTm TwoElim DPair Prj1 Prj2 Lam App C Ap Apd Unspan KZero S DummyTm
+  One Two Sigma Pi U El Span DSpan Dummy
 
-substAuxFct :: Int -> Subst -> Int -> Term
-substAuxFct m s n = if m == n then (moveIndicesTm s n 0) else (if m > n then (DB (m-1)) else (DB m))
+binTypeFold :: (a -> a -> a) -> a -> (Int -> a) -> TypeFold a a
+binTypeFold bn a f = TypeFold
+  f a a a bn4 bn4 bn3 bn3 bn3 bn4 bn1 bn4 bn4 bn3 bn2 bn2 a a a bn2 bn2 a bn1 bn1 bn3 bn2
+  where
+    bn1 = bn2 a
+    bn2 = bn3 a
+    bn3 = bn4 a
+    bn4 x1 x2 x3 x4 = bn x1 (bn x2 (bn x3 x4))
+
+foldType :: (Int -> TypeFold a b) -> Type -> a
+foldType f One = one (f 0)
+foldType f Two = two (f 0)
+foldType f (Sigma t' t) = sigma (f 0) (foldType f t') (foldType (f . (+1)) t)
+foldType f (Pi t' t) = Main.pi (f 0) (foldType f t') (foldType (f . (+1)) t)
+foldType f U = u (f 0)
+foldType f (El tm) = el (f 0) (foldTerm f tm)
+foldType f (Span t) = Main.span (f 0) (foldType f t)
+foldType f (DSpan t' t a) = dSpan (f 0) (foldType f t') (foldType (f . (+1)) t) (foldTerm f a)
+foldType f (Dummy t tm) = dummy (f 0) (foldType f t) (foldTerm f tm)
+
+foldTerm :: (Int -> TypeFold a b) -> Term -> b
+foldTerm f (DB m) = db (f 0) m
+foldTerm f StarTm = starTm (f 0)
+foldTerm f ZeroTm = zeroTm (f 0)
+foldTerm f OneTm = oneTm (f 0)
+foldTerm f (TwoElim t tm u v) = twoElim (f 0) (foldType f t) (foldTerm f tm) (foldTerm f u) (foldTerm f v)
+foldTerm f (DPair t' t u v) = dPair (f 0) (foldType f t') (foldType (f . (+1)) t) (foldTerm f u) (foldTerm f v)
+foldTerm f (Prj1 t' t tm) = prj1 (f 0) (foldType f t') (foldType (f . (+1)) t) (foldTerm f tm)
+foldTerm f (Prj2 t' t tm) = prj2 (f 0) (foldType f t') (foldType (f . (+1)) t) (foldTerm f tm)
+foldTerm f (Lam t' t tm) = lam (f 0) (foldType f t') (foldType (f . (+1)) t) (foldTerm (f . (+1)) tm)
+foldTerm f (App t' t fn tm) = app (f 0) (foldType f t') (foldType (f . (+1)) t) (foldTerm f fn) (foldTerm f tm)
+foldTerm f (C t) = c (f 0) (foldType f t)
+foldTerm f (Ap t t' tm a) = ap (f 0) (foldType f t) (foldType f t') (foldTerm (f . (+1)) tm) (foldTerm f a)
+foldTerm f (Apd t t' tm a) = apd (f 0) (foldType f t) (foldType (f . (+1)) t') (foldTerm (f . (+1)) tm) (foldTerm f a)
+foldTerm f (Unspan t0 t tm) = unspan (f 0) (foldType f t0) (foldType f t) (foldTerm (f . (+1)) tm)
+foldTerm f (KZero t tm) = kZero (f 0) (foldType f t) (foldTerm f tm)
+foldTerm f (S t tm) = s (f 0) (foldType f t) (foldTerm f tm)
+foldTerm f DummyTm = dummyTm (f 0)
+
+mapTypeFold :: (Int -> Int -> Term) -> Int -> TypeFold Type Term
+mapTypeFold f n = idTypeFold { db = \m -> f m n }
+
+mapType :: (Int -> Int -> Term) -> Type -> Type
+mapType f t = foldType (mapTypeFold f) t
+
+mapTerm :: (Int -> Int -> Term) -> Term -> Term
+mapTerm f t = foldTerm (mapTypeFold f) t
+
+substAuxFct :: Subst -> Int -> Int -> Term
+substAuxFct s m n = if m == n then (moveIndicesTm n s) else (if m > n then (DB (m-1)) else (DB m))
 
 subst :: Type -> Subst -> Type
-subst t s = mapType substAuxFct t s 0
+subst t s = mapType (substAuxFct s) t
 
 substTm :: Term -> Subst -> Term
-substTm tm s = mapTerm substAuxFct tm s 0
+substTm tm s = mapTerm (substAuxFct s) tm
 
-containsDB0Tm :: Term -> Int -> Bool
-containsDB0Tm (DB m) n = m == n
-containsDB0Tm (TwoElim t tm u v) n = (containsDB0 t n) || (containsDB0Tm tm n) || (containsDB0Tm u n) || (containsDB0Tm v n)
-containsDB0Tm (DPair t' t u v) n = (containsDB0 t' n) || (containsDB0 t (n+1)) || (containsDB0Tm u n) || (containsDB0Tm v n)
-containsDB0Tm (Prj1 t' t tm) n = (containsDB0 t' n) || (containsDB0 t (n+1)) || (containsDB0Tm tm n)
-containsDB0Tm (Prj2 t' t tm) n = (containsDB0 t' n) || (containsDB0 t (n+1)) || (containsDB0Tm tm n)
-containsDB0Tm (Lam t' t tm) n = (containsDB0 t' n) || (containsDB0 t (n+1)) || (containsDB0Tm tm (n+1))
-containsDB0Tm (App t' t f tm) n = (containsDB0 t' n) || (containsDB0 t (n+1)) || (containsDB0Tm f n) || (containsDB0Tm tm n)
-containsDB0Tm (C t) n = containsDB0 t n
-containsDB0Tm (Ap t t' tm a) n = (containsDB0 t n) || (containsDB0 t' n) || (containsDB0Tm tm (n+1)) || (containsDB0Tm a n)
-containsDB0Tm (Apd t t' tm a) n = (containsDB0 t n) || (containsDB0 t' (n+1)) || (containsDB0Tm tm (n+1)) || (containsDB0Tm a n)
-containsDB0Tm (Unspan t0 t tm) n = (containsDB0 t0 n) || (containsDB0 t n) || (containsDB0Tm tm (n+1))
-containsDB0Tm (KZero t tm) n = (containsDB0 t n) || (containsDB0Tm tm n)
-containsDB0Tm (S t tm) n = (containsDB0 t n) || (containsDB0Tm tm n)
-containsDB0Tm _  _ = False
-
-containsDB0 :: Type -> Int -> Bool
-containsDB0 (Sigma t' t) n = (containsDB0 t' n) || (containsDB0 t (n+1))
-containsDB0 (Pi t' t) n = (containsDB0 t' n) || (containsDB0 t (n+1))
-containsDB0 (El tm) n = containsDB0Tm tm n
-containsDB0 (Span t) n = containsDB0 t n
-containsDB0 (DSpan t' t a) n = (containsDB0 t' n) || (containsDB0 t (n+1)) || (containsDB0Tm a n)
-containsDB0 _ _ = False
+containsDB0 :: Type -> Bool
+containsDB0 = foldType (\n -> binTypeFold (||) False (==n))
 
 reduceTm :: Term -> Term
 reduceTm (TwoElim t tm u v)
@@ -115,7 +154,7 @@ reduceTm (Ap t t' g a) =
       case g of Ap t3 t3' f (DB 0) -> reduceTm (S t3' (Ap t t' (Ap t3 t3' f (DB 0)) a')); _ -> Ap (reduce t) (reduce t') g tm'
     tm -> Ap (reduce t) (reduce t') g tm
 reduceTm (Apd t t' g a)
-  | containsDB0 t' 0 =
+  | containsDB0 t' =
     case g of
       DPair b c u v ->
         DPair (reduce (DSpan t b a)) (reduce (DSpan t (subst c u) a))
@@ -152,7 +191,7 @@ reduce (Span t) =
     Sigma t'0 t0 -> Sigma (reduce (Span t'0)) (DSpan t'0 t0 (DB 0))
     t' -> Span t'
 reduce (DSpan t' t a)
-  | containsDB0 t 0 =
+  | containsDB0 t =
     case t of
       Sigma b c ->
         Sigma (reduce (DSpan t' b a)) (DSpan (Sigma t' b) c (DPair (Span t') (DSpan t' b a) a (DB 0)))
@@ -164,13 +203,13 @@ reduce (DSpan t' t a)
 reduce t = t
 
 moveIndicesFct :: Int -> Int -> Int -> Term
-moveIndicesFct m n l = DB (if m >= l then (m+n) else m)
+moveIndicesFct n m l = DB (if m >= l then (m+n) else m)
 
-moveIndices :: Type -> Int -> Int -> Type
-moveIndices = mapType moveIndicesFct
+moveIndices :: Int -> Type -> Type
+moveIndices n = mapType (moveIndicesFct n)
 
-moveIndicesTm :: Term -> Int -> Int -> Term
-moveIndicesTm = mapTerm moveIndicesFct
+moveIndicesTm :: Int -> Term -> Term
+moveIndicesTm n = mapTerm (moveIndicesFct n)
 
 typecheck :: Ctx -> Type -> Bool
 typecheck ctx (Sigma t' t) = (typecheck ctx t') && (typecheck (t':ctx) t)
@@ -181,7 +220,7 @@ typecheck ctx (DSpan t' t a) = (typecheck (t':ctx) t) && (typecheckTm ctx a (Spa
 typecheck _ t = True
 
 inferType :: Ctx -> Term -> Either String Type
-inferType ctx (DB n) = if length ctx > n then Right (moveIndices (ctx !! n) (n+1) 0) else Left "DB"
+inferType ctx (DB n) = if length ctx > n then Right (moveIndices (n+1) (ctx !! n)) else Left "DB"
 inferType _ StarTm = Right One
 inferType _ ZeroTm = Right Two
 inferType _ OneTm = Right Two
@@ -207,13 +246,13 @@ inferType ctx (App t' t f tm)
   | otherwise = Left "App"
 inferType ctx (C t) = if typecheck ctx t then Right U else Left "C"
 inferType ctx (Ap t t' tm a)
-  | (typecheck ctx t') && (typecheckTm (t:ctx) tm (moveIndices t' 1 0)) && (typecheckTm ctx a (Span t)) = Right (Span t')
+  | (typecheck ctx t') && (typecheckTm (t:ctx) tm (moveIndices 1 t')) && (typecheckTm ctx a (Span t)) = Right (Span t')
   | otherwise = Left "Ap"
 inferType ctx (Apd t t' tm a)
   | (typecheck (t:ctx) t') && (typecheckTm (t:ctx) tm t') && (typecheckTm ctx a (Span t)) = Right (DSpan t t' a)
   | otherwise = Left "Apd"
 inferType ctx (Unspan t0 t tm)
-  | (typecheck ctx t0) && (typecheck ctx t) && (typecheckTm (t:ctx) tm (moveIndices t0 1 0)) = Right (Span U)
+  | (typecheck ctx t0) && (typecheck ctx t) && (typecheckTm (t:ctx) tm (moveIndices 1 t0)) = Right (Span U)
   | otherwise = Left "Unspan"
 inferType ctx (KZero t tm) = if typecheckTm ctx tm (Span t) then Right t else Left "KZero"
 inferType ctx (S t tm) = if typecheckTm ctx tm (Span (Span t)) then Right (Span (Span t)) else Left "S"
