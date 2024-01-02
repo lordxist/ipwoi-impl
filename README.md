@@ -2,7 +2,7 @@
 
 First approach to a Haskell implementation of the local theory of ["Internal parametricity, without an interval" (Altenkirch et al. 2024)](https://arxiv.org/abs/2307.06448) (arXiv preprint).
 
-Work in progress. Currently able to typecheck the term the second projection of which gives the type for the polymorphic identity function parametricity (cf. sec. 2.2 of the paper): defined in `Main.hs` in `idFctParametricityPart1Tm` (and its type `idFctParametricityPart1`). (Though not yet with the reduced type `Sigma A P`, cf. TODO note at `idFctParametricityPart1` in `Main.hs`).
+Work in progress. Currently able to typecheck the term the second projection of which gives the type for the polymorphic identity function parametricity (cf. sec. 2.2 of the paper): defined in `Main.hs` in `idFctParametricityPart1Tm` (and its type `idFctParametricityPart1`). Typechecks as `Sigma A P` as desired.
 
 Usage:
 ```
