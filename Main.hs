@@ -16,7 +16,7 @@ data Term = DB Int | StarTm | ZeroTm | OneTm | TwoElim Type Term Term Term
   | Unspan Type Type Term
   | KZero Type Term
   | S Type Term
-  | DummyTm -- cf. type Dummy below
+  | DummyTm Type Term -- cf. type Dummy below
   deriving (Eq, Read, Show)
 
 data Type = One | Two | Sigma Type Type | Pi Type Type | U | El Term
@@ -47,7 +47,7 @@ data TypeFold a b = TypeFold {
 , unspan :: a -> a -> b -> b
 , kZero :: a -> b -> b
 , s :: a -> b -> b
-, dummyTm :: b
+, dummyTm :: a -> b -> b
 -- types
 , one :: a
 , two :: a
@@ -67,7 +67,7 @@ idTypeFold = TypeFold
 
 binTypeFold :: (a -> a -> a) -> a -> (Int -> a) -> TypeFold a a
 binTypeFold bn a f = TypeFold
-  f a a a bn4 bn4 bn3 bn3 bn3 bn4 bn1 bn4 bn4 bn3 bn2 bn2 a a a bn2 bn2 a bn1 bn1 bn3 bn2
+  f a a a bn4 bn4 bn3 bn3 bn3 bn4 bn1 bn4 bn4 bn3 bn2 bn2 bn2 a a bn2 bn2 a bn1 bn1 bn3 bn2
   where
     bn1 = bn2 a
     bn2 = bn3 a
@@ -102,7 +102,7 @@ foldTerm f (Apd t t' tm a) = apd (f 0) (foldType f t) (foldType (f . (+1)) t') (
 foldTerm f (Unspan t0 t tm) = unspan (f 0) (foldType f t0) (foldType f t) (foldTerm (f . (+1)) tm)
 foldTerm f (KZero t tm) = kZero (f 0) (foldType f t) (foldTerm f tm)
 foldTerm f (S t tm) = s (f 0) (foldType f t) (foldTerm f tm)
-foldTerm f DummyTm = dummyTm (f 0)
+foldTerm f (DummyTm t tm) = dummyTm (f 0) (foldType f t) (foldTerm f tm)
 
 mapTypeFold :: (Int -> Int -> Term) -> Int -> TypeFold Type Term
 mapTypeFold f n = idTypeFold { db = \m -> f m n }
@@ -131,10 +131,27 @@ reduceTm (TwoElim t tm u v)
   | reduceTm tm == OneTm  = reduceTm v
   | otherwise = TwoElim (reduce t) (reduceTm tm) (reduceTm u) (reduceTm v)
 reduceTm (DPair t' t u v) = DPair (reduce t') (reduce t) (reduceTm u) (reduceTm v)
-reduceTm (Prj1 t' t tm) = case reduceTm tm of DPair _ _ u _ -> reduceTm u; tm' -> Prj1 (reduce t') (reduce t) tm'
+reduceTm (Prj1 t' t tm) =
+  case reduceTm tm of
+    DPair _ _ u _ -> reduceTm u
+    -- ----
+    -- attempt to get closer to normalization (instance of the inverse dir. of the eq. implemented below)
+    tm'@(Apd _ _ _ (DPair _ _ (Unspan _ _ _) _)) ->
+      reduceTm
+        (Prj2 U (El (DB 0))
+          (KZero (Sigma U (El (DB 0))) (DPair (Span U) (Sigma t' t) (Unspan t' (Sigma t' t) (Prj1 t' t (DB 0))) tm')))
+    -- TODO (maybe): similar rule for Prj2 ?
+    -- ----
+    tm' -> Prj1 (reduce t') (reduce t) tm'
 reduceTm (Prj2 t' t tm) =
   case reduceTm tm of
     DPair _ _ _ v -> reduceTm v
+    -- ----
+    -- counterpart to the attempt to get closer to normalization above:
+    --   excludes this case to avoid the loop and adds a special reduction rule (see TODO)
+    tm'@(KZero (Sigma U (El (DB 0))) (DPair (Span U) U (Unspan _ _ tm2) (Apd _ _ _ (DPair _ _ (Unspan _ _ _) _)))) ->
+      Prj2 (reduce t') (reduce t) tm' -- TODO: the special reduction in this case (cf. page 14 of the paper: second eq.)
+    -- ----
     KZero (Sigma U (El (DB 0))) (DPair (Span U) U (Unspan _ _ tm2) a) -> reduceTm (substTm tm2 a) -- for kd
     tm' -> Prj2 (reduce t') (reduce t) tm'
 reduceTm (App t' t f tm) =
@@ -210,6 +227,7 @@ reduce (DSpan t' t a)
       _ ->
         case reduceTm a of Ap t2 t2' tm a' -> DSpan t2 (subst t tm) a'; tm -> DSpan (reduce t') t tm
   | otherwise = reduce (Span (reduce t))
+reduce (Dummy t tm) = Dummy (reduce t) (reduceTm tm)
 reduce t = t
 
 moveIndicesFct :: Int -> Int -> Int -> Term
@@ -266,6 +284,7 @@ inferType ctx (Unspan t0 t tm)
   | otherwise = Left "Unspan"
 inferType ctx (KZero t tm) = if typecheckTm ctx tm (Span t) then Right t else Left "KZero"
 inferType ctx (S t tm) = if typecheckTm ctx tm (Span (Span t)) then Right (Span (Span t)) else Left "S"
+inferType ctx (DummyTm t tm) = if typecheckTm ctx tm t then Right (Dummy t tm) else Left "DummyTm"
 
 typecheckTm :: Ctx -> Term -> Type -> Bool
 typecheckTm ctx tm t =
@@ -300,7 +319,7 @@ prettyTm (Apd t t' tm a) s = "apd("++pretty t s++"."++prettyTm tm s++":"++pretty
 prettyTm (Unspan t0 t tm) s = "unspan("++pretty t0 s++", "++pretty t s++"."++prettyTm tm s++")"
 prettyTm (KZero t tm) s = "k\x27E8"++pretty t s++"\x27E9("++prettyTm tm s++")"
 prettyTm (S t tm) s = "S\x27E8"++pretty t s++"\x27E9("++prettyTm tm s++")"
-prettyTm DummyTm _ = "D"
+prettyTm (DummyTm _ _) _ = "D"
 
 pretty :: Type -> Bool -> String
 pretty One s = "\ESC[1m1\ESC[0m"
@@ -361,6 +380,26 @@ idFctParametricityTmAux f a p =
       (Unspan Two (Sigma Two (Dummy Two (DB 0)))
         (Prj1 Two (Dummy Two (DB 0)) (DB 0)))
       (DPair Two (Dummy Two (DB 0)) (DB a) (DB p)))
+
+-- Prj1 of idFctParametricityPart1Tm, wrapped with Dummy to see the inner reduction works
+idFctParametricityPart2Tm :: Term
+idFctParametricityPart2Tm =
+  case idFctParametricityPart2 of
+    Pi i o@(Pi i2 o2@(Pi i3 o3)) ->
+      Lam i o (Lam i2 o2 (Lam i3 o3
+        (DummyTm Two (Prj1 Two (Dummy Two (DB 0)) (idFctParametricityTmAux 2 1 0)))
+      ))
+    _ -> undefined
+
+idFctParametricityPart2 :: Type
+idFctParametricityPart2 =
+  Pi (Pi (Sigma U (El (DB 0))) (El (Prj1 U (El (DB 0)) (DB 0))))
+    (Pi Two
+      (Pi (Dummy Two (DB 0))
+        (Dummy Two
+          (App (Sigma U (El (DB 0))) (El (Prj1 U (El (DB 0)) (DB 0)))
+            (DB 2) (DPair U (El (DB 0)) (C Two) (DB 1))))
+      ))
 
 main :: IO ()
 main = do
