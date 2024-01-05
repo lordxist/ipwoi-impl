@@ -149,10 +149,10 @@ reduceTm (Prj2 t' t tm) =
     -- ----
     -- counterpart to the attempt to get closer to normalization above:
     --   excludes this case to avoid the loop and adds a special reduction rule (see TODO)
-    tm'@(KZero (Sigma U (El (DB 0))) (DPair (Span U) U (Unspan _ _ tm2) (Apd _ _ _ (DPair _ _ (Unspan _ _ _) _)))) ->
+    tm'@(KZero (Sigma U (El (DB 0))) (DPair (Span U) _ (Unspan _ _ tm2) (Apd _ _ _ (DPair _ _ (Unspan _ _ _) _)))) ->
       Prj2 (reduce t') (reduce t) tm' -- TODO: the special reduction in this case (cf. page 14 of the paper: second eq.)
     -- ----
-    KZero (Sigma U (El (DB 0))) (DPair (Span U) U (Unspan _ _ tm2) a) -> reduceTm (substTm tm2 a) -- for kd
+    KZero (Sigma U (El (DB 0))) (DPair (Span U) _ (Unspan _ _ tm2) a) -> reduceTm (substTm tm2 a) -- for kd
     tm' -> Prj2 (reduce t') (reduce t) tm'
 reduceTm (App t' t f tm) =
   case reduceTm f of Lam _ _ tm' -> substTm tm' (reduceTm tm); tm' -> App (reduce t') (reduce t) tm' (reduceTm tm)
