@@ -159,6 +159,14 @@ reduceTm (Prj2 t' t tm) =
               tm0')))
     -- ----
     KZero (Sigma U (El (DB 0))) (DPair (Span U) _ (Unspan _ _ tm2) a) -> reduceTm (substTm tm2 a) -- for kd
+    -- ----
+    -- attempt to get closer to normalization
+    --   would be derivable using the inv. dir. of the rule for (Apd _ _ (DPair ...) _) (see below),
+    --   but a special-cased rule for this inv. dir. would be context dependent
+    --   (thus this rule here seems generic/natural enough for now)
+    tm'@(KZero _ (DPair _ _ a (Apd t _ tm a'))) ->
+      if a == a' then reduceTm (substTm tm (KZero t a)) else Prj2 (reduce t') (reduce t) tm'
+    -- ----
     tm' -> Prj2 (reduce t') (reduce t) tm'
 reduceTm (App t' t f tm) =
   case reduceTm f of Lam _ _ tm' -> substTm tm' (reduceTm tm); tm' -> App (reduce t') (reduce t) tm' (reduceTm tm)
