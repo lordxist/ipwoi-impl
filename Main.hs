@@ -446,10 +446,10 @@ main = do
   hSetBuffering stdout NoBuffering
   putStr "Term: "
   tmS <- getLine
-  let tm = if tmS == "idFctParametricityPart1Tm" then idFctParametricityPart1Tm else read tmS
+  let tm = if tmS == "idFctParametricityTm" then idFctParametricityTm else read tmS
   putStr "Type: "
   tS <- getLine
-  let t = if tS == "idFctParametricityPart1" then idFctParametricityPart1 else read tS
+  let t = if tS == "idFctParametricity" then idFctParametricity else read tS
   putStrLn "_________________________________"
   let t' = reduce t
   let res = typecheckTmWithMsg [] tm t
