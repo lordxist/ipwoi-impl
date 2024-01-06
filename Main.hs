@@ -204,6 +204,15 @@ reduceTm (Apd t t' g a)
   | otherwise = Ap t t' g a
 reduceTm (KZero t tm) =
   case reduceTm tm of
+    -- ----
+    -- attempt to get closer to normalization
+    --   would be derivable using certain inv. dir.s + DPair eta law, but we do not have eta in our red. rules
+    tm'@(DPair ta tb a b) ->
+      case reduce t of
+        --t0@(Sigma t0' t0'') -> reduceTm (DPair t0' t0'' (KZero t0' a) StarTm)
+        t0@(Sigma t0' t0'') -> reduceTm (DPair t0' t0'' (KZero t0' a) (Prj2 t0' t0'' (KZero t0 (DPair ta tb a b))))
+        t0 -> KZero t0 tm'
+    -- ----
     Ap t2 t2' f a -> reduceTm (substTm f (KZero t2 a)) -- covers the one below
     --Ap t2 _ a StarTm -> reduceTm a -- for R (R A a = Ap One A a StarTm (no (DB 0) in a))
     S t2 a -> reduceTm (Ap (Span t2) t2 (KZero t2 (DB 0)) a)
