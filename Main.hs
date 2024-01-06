@@ -143,13 +143,12 @@ reduceTm (Prj1 t' t tm) =
     -- TODO (maybe): similar rule for Prj2 ?
     -- ----
     tm' -> Prj1 (reduce t') (reduce t) tm'
-reduceTm (Prj2 t' t tm) =
-  case reduceTm tm of
-    DPair _ _ _ v -> reduceTm v
+reduceTm (Prj2 t' t tm'@(KZero tk (DPair tp1 tp2 tm0 tm0'))) =
+  case (reduce tk, reduce tp1, reduce tp2, reduceTm tm0, reduceTm tm0') of
     -- ----
     -- counterpart to the attempt to get closer to normalization above:
     --   excludes this case to avoid the loop and adds a special reduction rule
-    KZero (Sigma U (El (DB 0))) (DPair (Span U) _ tm0@(Unspan _ _ _) tm0'@(Apd _ _ _ (DPair _ t2@(DSpan U t2d (DB 0)) (Unspan _ _ _) tm2))) ->
+    (Sigma U (El (DB 0)), Span U, _ , Unspan _ _ _, Apd _ _ _ (DPair _ t2@(DSpan U t2d (DB 0)) (Unspan _ _ _) tm2)) ->
       let a = (DPair (Span U) t2 tm0 tm2) in
       reduceTm
         (Prj2 (Sigma U t2d) (El (Prj1 U t2d (DB 0)))
@@ -158,15 +157,18 @@ reduceTm (Prj2 t' t tm) =
               a
               tm0')))
     -- ----
-    KZero (Sigma U (El (DB 0))) (DPair (Span U) _ (Unspan _ _ tm2) a) -> reduceTm (substTm tm2 a) -- for kd
+    (Sigma U (El (DB 0)), Span U, _, Unspan _ _ tm2, a) -> reduceTm (substTm tm2 a) -- for kd
     -- ----
     -- attempt to get closer to normalization
     --   would be derivable using the inv. dir. of the rule for (Apd _ _ (DPair ...) _) (see below),
     --   but a special-cased rule for this inv. dir. would be context dependent
     --   (thus this rule here seems generic/natural enough for now)
-    tm'@(KZero _ (DPair _ _ a (Apd t _ tm a'))) ->
-      if a == a' then reduceTm (substTm tm (KZero t a)) else Prj2 (reduce t') (reduce t) tm'
+    (_, _, _, a, Apd t0 _ tm a') ->
+      if a == a' then reduceTm (substTm tm (KZero t0 a)) else Prj2 (reduce t') (reduce t) (reduceTm tm')
     -- ----
+reduceTm (Prj2 t' t tm) =
+  case reduceTm tm of
+    DPair _ _ _ v -> reduceTm v
     tm' -> Prj2 (reduce t') (reduce t) tm'
 reduceTm (App t' t f tm) =
   case reduceTm f of Lam _ _ tm' -> substTm tm' (reduceTm tm); tm' -> App (reduce t') (reduce t) tm' (reduceTm tm)
