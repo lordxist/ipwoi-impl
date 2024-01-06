@@ -215,6 +215,12 @@ reduceTm (KZero t tm) =
     -- ----
     Ap t2 t2' f a -> reduceTm (substTm f (KZero t2 a)) -- covers the one below
     --Ap t2 _ a StarTm -> reduceTm a -- for R (R A a = Ap One A a StarTm (no (DB 0) in a))
+    -- ----
+    -- attempt to get closer to normalization
+    --  (instance of the inverse dir. of the eq. implemented above,
+    --  loop avoided by red. order and special-casing for (El (KZero U (Unspan ...))) (see below))
+    tm'@(Unspan _ _ _) -> reduceTm (C (El (KZero t tm')))
+    -- ----
     S t2 a -> reduceTm (Ap (Span t2) t2 (KZero t2 (DB 0)) a)
     tm' -> KZero (reduce t) tm'
 reduceTm (S t tm) =
@@ -229,7 +235,14 @@ reduceTm tm = tm
 reduce :: Type -> Type
 reduce (Sigma t' t) = Sigma (reduce t') t
 reduce (Pi t' t) = Pi (reduce t') t
-reduce (El tm) = case reduceTm tm of KZero U (Unspan t0 t tm') -> t0; C t -> reduce t; tm' -> El tm'
+reduce (El tm) =
+  case tm of
+    -- ----
+    -- counterpart to the attempt to get closer to normalization above (for (KZero _ (Unspan ...))):
+    --   excludes this case to avoid the loop
+    KZero U (Unspan t0 t tm') -> reduce t0
+    -- ----
+    _ -> case reduceTm tm of KZero U (Unspan t0 t tm') -> t0; C t -> reduce t; tm' -> El tm'
 reduce (Span t) =
   case reduce t of
     One -> One
