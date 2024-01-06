@@ -149,13 +149,14 @@ reduceTm (Prj2 t' t tm) =
     -- ----
     -- counterpart to the attempt to get closer to normalization above:
     --   excludes this case to avoid the loop and adds a special reduction rule
-    tm'@(KZero (Sigma U (El (DB 0))) (DPair (Span U) _ tm0@(Unspan _ _ _) tm0'@(Apd _ _ _ (DPair _ t2@(DSpan U t2d (DB 0)) (Unspan _ _ _) tm2)))) ->
+    KZero (Sigma U (El (DB 0))) (DPair (Span U) _ tm0@(Unspan _ _ _) tm0'@(Apd _ _ _ (DPair _ t2@(DSpan U t2d (DB 0)) (Unspan _ _ _) tm2))) ->
       let a = (DPair (Span U) t2 tm0 tm2) in
-      Prj2 (Sigma U t2d) (El (Prj1 U t2d (DB 0)))
-        (KZero (Sigma (Sigma U t2d) (El (Prj1 U t2d (DB 0))))
-          (DPair (Sigma (Span U) t2) (DSpan (Sigma U t2d) (El (Prj1 U t2d (DB 0))) a)
-            a
-            tm0'))
+      reduceTm
+        (Prj2 (Sigma U t2d) (El (Prj1 U t2d (DB 0)))
+          (KZero (Sigma (Sigma U t2d) (El (Prj1 U t2d (DB 0))))
+            (DPair (Sigma (Span U) t2) (DSpan (Sigma U t2d) (El (Prj1 U t2d (DB 0))) a)
+              a
+              tm0')))
     -- ----
     KZero (Sigma U (El (DB 0))) (DPair (Span U) _ (Unspan _ _ tm2) a) -> reduceTm (substTm tm2 a) -- for kd
     tm' -> Prj2 (reduce t') (reduce t) tm'
